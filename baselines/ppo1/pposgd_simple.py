@@ -135,6 +135,8 @@ def learn(env, policy_func, *,
     episodes_so_far = 0
     timesteps_so_far = 0
     iters_so_far = 0
+    rollouts_time = 0
+    optimization_time = 0
     tstart = time.time()
     lenbuffer = deque(maxlen=100) # rolling buffer for episode lengths
     rewbuffer = deque(maxlen=100) # rolling buffer for episode rewards
@@ -160,6 +162,7 @@ def learn(env, policy_func, *,
             raise NotImplementedError
 
         logger.log("********** Iteration %i ************"%iters_so_far)
+        a = time.time()
 
         seg = seg_gen.__next__()
         add_vtarg_and_adv(seg, gamma, lam)
@@ -174,14 +177,22 @@ def learn(env, policy_func, *,
         if hasattr(pi, "ob_rms"): pi.ob_rms.update(ob) # update running mean/std for policy
 
         assign_old_eq_new() # set old parameter values to new parameter values
+        b = time.time()
         logger.log("Optimizing...")
         logger.log(fmt_row(13, loss_names))
+        grad_time = 0.0
+        allreduce_time = 0.0
         # Here we do a bunch of optimization epochs over the data
         for _ in range(optim_epochs):
             losses = [] # list of tuples, each of which gives the loss for a minibatch
             for batch in d.iterate_once(optim_batchsize):
+                aa = time.time()
                 *newlosses, g = lossandgrad(batch["ob"], batch["ac"], batch["atarg"], batch["vtarg"], cur_lrmult)
+                bb = time.time()
                 adam.update(g, optim_stepsize * cur_lrmult) 
+                cc = time.time()
+                grad_time += bb - aa
+                allreduce_time += cc - bb
                 losses.append(newlosses)
             logger.log(fmt_row(13, np.mean(losses, axis=0)))
 
@@ -200,6 +211,8 @@ def learn(env, policy_func, *,
         lens, rews = map(flatten_lists, zip(*listoflrpairs))
         lenbuffer.extend(lens)
         rewbuffer.extend(rews)
+        logger.record_tabular("GradTime", grad_time)
+        logger.record_tabular("AllReduceTime", allreduce_time)
         logger.record_tabular("EpLenMean", np.mean(lenbuffer))
         logger.record_tabular("EpRewMean", np.mean(rewbuffer))
         logger.record_tabular("EpThisIter", len(lens))
@@ -209,6 +222,11 @@ def learn(env, policy_func, *,
         logger.record_tabular("EpisodesSoFar", episodes_so_far)
         logger.record_tabular("TimestepsSoFar", timesteps_so_far)
         logger.record_tabular("TimeElapsed", time.time() - tstart)
+        c = time.time()
+        rollouts_time += (b - a)
+        optimization_time += (c - b)
+        logger.record_tabular("RolloutsTime", rollouts_time)
+        logger.record_tabular("OptimizationTime", optimization_time)
         if MPI.COMM_WORLD.Get_rank()==0:
             logger.dump_tabular()
 

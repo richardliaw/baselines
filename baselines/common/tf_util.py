@@ -220,11 +220,12 @@ def get_session():
     return tf.get_default_session()
 
 
-def make_session(num_cpu):
+def make_session(num_cpu, gpu_fraction=1):
     """Returns a session that will use <num_cpu> CPU's only"""
     tf_config = tf.ConfigProto(
         inter_op_parallelism_threads=num_cpu,
-        intra_op_parallelism_threads=num_cpu)
+        intra_op_parallelism_threads=num_cpu,
+        gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=gpu_fraction))
     return tf.Session(config=tf_config)
 
 

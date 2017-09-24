@@ -12,8 +12,8 @@ import sys
 def train(env_id, num_timesteps, seed):
     from baselines.ppo1 import mlp_policy, pposgd_simple
     rank = MPI.COMM_WORLD.Get_rank()
-    os.environ["CUDA_VISIBLE_DEVICES"] = "11"
-    U.make_session(num_cpu=1).__enter__()
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    U.make_session(num_cpu=1, gpu_fraction=.10).__enter__()
     workerseed = seed + 10000 * MPI.COMM_WORLD.Get_rank()
     set_global_seeds(workerseed)
     env = gym.make(env_id)
@@ -27,10 +27,10 @@ def train(env_id, num_timesteps, seed):
     gym.logger.setLevel(logging.WARN)
     pposgd_simple.learn(env, policy_fn, 
             max_timesteps=num_timesteps,
-            timesteps_per_batch=320000,
+            timesteps_per_batch=40000,
             clip_param=0.2, entcoeff=0.0,
-            optim_epochs=20, optim_stepsize=1e-4, optim_batchsize=8192,
-            gamma=0.995, lam=0.95, schedule='linear',
+            optim_epochs=20, optim_stepsize=1e-4, optim_batchsize=4096,
+            gamma=0.995, lam=0.95, schedule='constant',
         )
     env.close()
 
